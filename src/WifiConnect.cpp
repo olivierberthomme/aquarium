@@ -4,21 +4,43 @@
 #include <ArduinoOTA.h>
 #include <secrets.h>
 #include <TaskScheduler.h>
+#include <Syslog.h>
 
 #define HOSTNAME "RobotPotager"
+// Scheduler variables
 #define _TASK_SLEEP_ON_IDLE_RUN
 
+// Wifi variables
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASS;
 
-void readWiFiSignal() {
-    int signal = WiFi.RSSI();
-    Serial.print("Wifi Signal: ");
-    Serial.println(signal);  
+// Syslog server connection info
+#define SYSLOG_SERVER "192.168.1.100"
+#define SYSLOG_PORT 10500
+
+// Prototype
+void readWiFiSignal();
+
+// Timer/Scheduler
+Scheduler runner;
+// List tasks
+Task t2(2*60*1000, TASK_FOREVER, &readWiFiSignal, &runner, true);  //adding task to the chain on creation
+
+// A UDP instance to let us send and receive packets over UDP
+WiFiUDP udpClient;
+Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, HOSTNAME, HOSTNAME, LOG_KERN);
+
+void write_output(String message){
+  Serial.println(message);
+  syslog.log(LOG_INFO, message);
 }
 
-Scheduler runner;
-Task t2(2000, TASK_FOREVER, &readWiFiSignal, &runner, true);  //adding task to the chain on creation
+void readWiFiSignal() {
+    int signal = WiFi.RSSI();
+    char message[64];
+    sprintf(message, "Wifi signal: %d dB", signal);
+    write_output(message);
+}
 
 void setup() {
   // Region WiFi
@@ -32,6 +54,9 @@ void setup() {
     delay(5000);
     ESP.restart();
   }
+  write_output(String("Ready"));
+  write_output(String("IP address:"));
+  write_output(WiFi.localIP().toString());
   // Region WiFi end
 
   // Region OTA
@@ -81,14 +106,15 @@ void setup() {
     }
   });
   ArduinoOTA.begin();
-  Serial.println("Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
   // Region OTA end
 
   // Region Timer
   runner.startNow();  // set point-in-time for scheduling start
   // Region Timer end
+
+  // Region syslog
+  syslog.log(LOG_INFO, "End setup function");
+  // Region syslog end
 }
 
 void loop() {
