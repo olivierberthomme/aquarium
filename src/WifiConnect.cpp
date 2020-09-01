@@ -3,16 +3,27 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <secrets.h>
+#include <TaskScheduler.h>
 
 #define HOSTNAME "RobotPotager"
+#define _TASK_SLEEP_ON_IDLE_RUN
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASS;
 
+void readWiFiSignal() {
+    int signal = WiFi.RSSI();
+    Serial.print("Wifi Signal: ");
+    Serial.println(signal);  
+}
+
+Scheduler runner;
+Task t2(2000, TASK_FOREVER, &readWiFiSignal, &runner, true);  //adding task to the chain on creation
+
 void setup() {
-  // Region WiFi + OTA
+  // Region WiFi
   Serial.begin(115200);
-  Serial.println("Booting");
+  Serial.println("\nBooting\n");
   WiFi.mode(WIFI_STA);
   WiFi.hostname(HOSTNAME);
   WiFi.begin(ssid, password);
@@ -21,6 +32,9 @@ void setup() {
     delay(5000);
     ESP.restart();
   }
+  // Region WiFi end
+
+  // Region OTA
 
   // Port defaults to 8266
   ArduinoOTA.setPort(8266);
@@ -70,9 +84,16 @@ void setup() {
   Serial.println("Ready");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
-  // Region WiFi + OTA
+  // Region OTA end
+
+  // Region Timer
+  runner.startNow();  // set point-in-time for scheduling start
+  // Region Timer end
 }
 
 void loop() {
+  // OTA
   ArduinoOTA.handle();
+  // Timer
+  runner.execute();
 }
