@@ -1,10 +1,12 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
+#include <ESP8266HTTPClient.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <secrets.h>
 #include <TaskScheduler.h>
 #include <Syslog.h>
+#include <base64.h>
 
 #define HOSTNAME "RobotPotager"
 // Scheduler variables
@@ -13,33 +15,59 @@
 // Wifi variables
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASS;
+// const String DZ_API_S = DZ_API;
 
 // Syslog server connection info
 #define SYSLOG_SERVER "192.168.1.100"
 #define SYSLOG_PORT 10500
 
 // Prototype
-void readWiFiSignal();
+void print_WifiSignal();
+void get_hardware();
 
 // Timer/Scheduler
 Scheduler runner;
 // List tasks
-Task t2(2*60*1000, TASK_FOREVER, &readWiFiSignal, &runner, true);  //adding task to the chain on creation
+Task t1(2*60*1000, TASK_FOREVER, &print_WifiSignal, &runner, true);  //adding task to the chain on creation
+Task t2(60*1000, TASK_FOREVER, &get_hardware, &runner, true);  //adding task to the chain on creation
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, HOSTNAME, HOSTNAME, LOG_KERN);
 
+//Object of class HTTPClient
+HTTPClient http;
+
 void write_output(String message){
-  Serial.println(message);
   syslog.log(LOG_INFO, message);
+  Serial.println(message);
 }
 
-void readWiFiSignal() {
+void print_WifiSignal() {
     int signal = WiFi.RSSI();
     char message[64];
     sprintf(message, "Wifi signal: %d dB", signal);
     write_output(message);
+}
+
+void get_hardware(){
+  String URL = DZ_API + String("type=hardware");
+  http.begin(URL);
+  write_output(URL);
+  String auth = base64::encode(String(DZ_USER) + ":" + String(DZ_PASS));
+  write_output(auth);
+  http.addHeader("Authorization", "Basic " + auth);
+
+  int httpCode = http.GET();
+  //Check the returning code
+  if (httpCode != 200) {
+    write_output("HTTP call in get_hardware error");
+    write_output(String(httpCode));
+  }else{
+    String payload = http.getString();
+    write_output(payload);
+  }
+  http.end();   //Close connection
 }
 
 void setup() {
