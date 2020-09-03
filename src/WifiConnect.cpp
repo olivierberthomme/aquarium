@@ -7,6 +7,7 @@
 #include <TaskScheduler.h>
 #include <Syslog.h>
 #include <base64.h>
+#include <ArduinoJson.h>
 
 #define HOSTNAME "RobotPotager"
 // Scheduler variables
@@ -15,7 +16,10 @@
 // Wifi variables
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASS;
-// const String DZ_API_S = DZ_API;
+
+// Domoticz variables
+int WeMos_dz_Hw_idx = 0;
+int WeMos_dz_Plan_idx = 0;
 
 // Syslog server connection info
 #define SYSLOG_SERVER "192.168.1.100"
@@ -23,13 +27,13 @@ const char* password = WIFI_PASS;
 
 // Prototype
 void print_WifiSignal();
-void get_hardware();
+void get_domoticzIdx();
 
 // Timer/Scheduler
 Scheduler runner;
 // List tasks
-Task t1(2*60*1000, TASK_FOREVER, &print_WifiSignal, &runner, true);  //adding task to the chain on creation
-Task t2(60*1000, TASK_FOREVER, &get_hardware, &runner, true);  //adding task to the chain on creation
+Task t1(2*60*1000, TASK_FOREVER, &print_WifiSignal, &runner, true);    //adding task to the chain on creation
+Task t2(1*60*1000, TASK_FOREVER, &get_domoticzIdx, &runner, true);  //Get Idx every 4 hours
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -50,24 +54,199 @@ void print_WifiSignal() {
     write_output(message);
 }
 
-void get_hardware(){
+void get_HardwareIdx(){
+  // JSON document
+  // Allocate the JSON document
+  // Use arduinojson.org/v6/assistant to compute the capacity.
+  const size_t capacity = 5144;
+  DynamicJsonDocument dzHardware(capacity);
+
   String URL = DZ_API + String("type=hardware");
-  http.begin(URL);
-  write_output(URL);
+  WiFiClient client;
+  http.begin(client, URL);
+  // write_output(URL);
   String auth = base64::encode(String(DZ_USER) + ":" + String(DZ_PASS));
-  write_output(auth);
+  // write_output(auth);
   http.addHeader("Authorization", "Basic " + auth);
 
   int httpCode = http.GET();
+  String payload;
   //Check the returning code
   if (httpCode != 200) {
-    write_output("HTTP call in get_hardware error");
+    write_output("HTTP call in get_domoticzIdx error");
     write_output(String(httpCode));
   }else{
-    String payload = http.getString();
-    write_output(payload);
+    payload = http.getString();
+    // write_output(payload);
   }
   http.end();   //Close connection
+
+  // Parse JSON object
+  // Only keep few fields
+  StaticJsonDocument<200> filter;
+  filter["result"][0]["Name"] = true;
+  filter["result"][0]["idx"] = true;
+  filter["result"][0]["Enabled"] = true;
+
+  DeserializationError error = deserializeJson(dzHardware, payload, DeserializationOption::Filter(filter));
+
+  if (error) {
+    write_output(F("deserializeJson() failed: "));
+    write_output(error.c_str());
+    return;
+  }
+
+  // Extract values
+  // Serial.println(F("Response:"));
+  // serializeJson(dzHardware["result"], Serial);
+  // extract the values
+  // Serial.println(F("JsonArry:"));
+
+  // Retreive hardware
+  JsonArray array = dzHardware["result"].as<JsonArray>();
+  for(JsonVariant v : array) {
+    if(String(HOSTNAME).equals(v["Name"].as<char*>())){
+      WeMos_dz_Hw_idx = v["idx"].as<int>();
+    }
+  }
+}
+
+void get_PlanIdx(){
+  // JSON document
+  // Allocate the JSON document
+  // Use arduinojson.org/v6/assistant to compute the capacity.
+  const size_t capacity = 512;
+  DynamicJsonDocument dzReturn(capacity);
+
+  String URL = DZ_API + String("type=plans");
+  WiFiClient client;
+  http.begin(client, URL);
+  // write_output(URL);
+  String auth = base64::encode(String(DZ_USER) + ":" + String(DZ_PASS));
+  // write_output(auth);
+  http.addHeader("Authorization", "Basic " + auth);
+
+  int httpCode = http.GET();
+  String payload;
+  //Check the returning code
+  if (httpCode != 200) {
+    write_output("HTTP call in get_domoticzIdx error");
+    write_output(String(httpCode));
+  }
+  // else{
+  //   payload = http.getString();
+  //   // write_output(payload);
+  // }
+
+  // Parse JSON object
+  // Only keep few fields
+  StaticJsonDocument<200> filter;
+  filter["result"][0]["Name"] = true;
+  filter["result"][0]["idx"] = true;
+
+  DeserializationError error = deserializeJson(dzReturn, http.getStream(), DeserializationOption::Filter(filter));
+
+  http.end();   //Close connection
+  if (error) {
+    write_output(F("deserializeJson() failed: "));
+    write_output(error.c_str());
+    return;
+  }
+
+  // Extract values
+  // Serial.println(F("Response:"));
+  // serializeJson(dzHardware["result"], Serial);
+  // extract the values
+  // Serial.println(F("JsonArry:"));
+
+  // Retreive hardware
+  JsonArray array = dzReturn["result"].as<JsonArray>();
+  for(JsonVariant v : array) {
+    if(String(HOSTNAME).equals(v["Name"].as<char*>())){
+      WeMos_dz_Plan_idx = v["idx"].as<int>();
+    }
+  }
+}
+
+void get_DevicesIdx(){
+  // JSON document
+  // Allocate the JSON document
+  // Use arduinojson.org/v6/assistant to compute the capacity.
+  const size_t capacity = 10000;
+  DynamicJsonDocument dzDevice(capacity);
+
+  String URL = DZ_API + String("type=devices&plan=")+String(WeMos_dz_Plan_idx);
+  WiFiClient client;
+  http.begin(client, URL);
+  // write_output(URL);
+  String auth = base64::encode(String(DZ_USER) + ":" + String(DZ_PASS));
+  // write_output(auth);
+  http.addHeader("Authorization", "Basic " + auth);
+
+  int httpCode = http.GET();
+  // char* payload;
+  //Check the returning code
+  if (httpCode != 200) {
+    write_output("HTTP call in get_domoticzIdx error:");
+    write_output(String(httpCode));
+    return;
+  }
+  // else{
+  //   write_output("[HTTP] GET code:");
+  //   write_output(String(httpCode));
+    // payload = http.getString();
+    // write_output(payload);
+  // }
+
+  // Parse JSON object
+  // Only keep few fields
+  StaticJsonDocument<300> filter;
+  // filter["result"][0]["PlanId"] = true;
+  filter["result"][0]["Type"] = true;
+  filter["result"][0]["SubType"] = true;
+  filter["result"][0]["SwitchType"] = true;
+  filter["result"][0]["Name"] = true;
+  filter["result"][0]["idx"] = true;
+
+  // serializeJson(filter, Serial);
+
+  DeserializationError error = deserializeJson(dzDevice, http.getStream(), DeserializationOption::Filter(filter));
+
+  if (error) {
+    write_output(F("deserializeJson() failed: "));
+    write_output(error.c_str());
+    return;
+  }
+
+  http.end();   //Close connection
+  // Extract values
+  Serial.println(F("Response:"));
+  serializeJson(dzDevice, Serial);
+  // extract the values
+  // Serial.println(F("JsonArry:"));
+
+  // Retreive hardware
+  // JsonArray array = dzDevice["result"].as<JsonArray>();
+  // for(JsonVariant v : array) {
+  //   if(String(HOSTNAME).equals(v["Name"].as<char*>())){
+  //     WeMos_dz_Hw_idx = v["idx"].as<int>();
+  //   }
+  // }
+}
+
+void get_domoticzIdx(){
+  // Get hardware IDX from Domoticz
+  get_HardwareIdx();
+  // write_output(F("WeMos_dz_Hw_idx:"));
+  // write_output(String(WeMos_dz_Hw_idx));
+
+  // Get plan IDX from Domoticz
+  get_PlanIdx();
+  // write_output(F("WeMos_dz_Plan_idx:"));
+  // write_output(String(WeMos_dz_Plan_idx));
+
+  // Get devices IDX from Domoticz
+  get_DevicesIdx();
 }
 
 void setup() {
