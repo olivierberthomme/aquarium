@@ -3,11 +3,11 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-#include <secrets.h>
 #include <TaskScheduler.h>
 #include <Syslog.h>
 #include <base64.h>
 #include <ArduinoJson.h>
+#include <secrets.h>
 
 #define HOSTNAME "RobotPotager"
 // Scheduler variables
@@ -21,6 +21,10 @@ const char* password = WIFI_PASS;
 int WeMos_dz_Hw_idx = 0;
 int WeMos_dz_Plan_idx = 0;
 
+const char* dz_signal_name = "Reseau";
+int dz_signal_idx = 0;
+// int dz_signal_val = 0;
+
 // Syslog server connection info
 #define SYSLOG_SERVER "192.168.1.100"
 #define SYSLOG_PORT 10500
@@ -28,12 +32,15 @@ int WeMos_dz_Plan_idx = 0;
 // Prototype
 void print_WifiSignal();
 void get_domoticzIdx();
+void send_signal();
 
 // Timer/Scheduler
 Scheduler runner;
+
 // List tasks
-Task t1(2*60*1000, TASK_FOREVER, &print_WifiSignal, &runner, true);    //adding task to the chain on creation
-Task t2(1*60*1000, TASK_FOREVER, &get_domoticzIdx, &runner, true);  //Get Idx every 4 hours
+// Task t1(2*60*1000, TASK_FOREVER, &print_WifiSignal, &runner, true);    //adding task to the chain on creation
+Task update_dz_idx(4*60*60*1000, TASK_FOREVER, &get_domoticzIdx, &runner, true);  //Get Idx every 4 hours
+Task update_dz_signal(15*60*1000, TASK_FOREVER, &send_signal, &runner, true);  //Update Wifi signal every 15mn
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -47,11 +54,38 @@ void write_output(String message){
   Serial.println(message);
 }
 
-void print_WifiSignal() {
+int get_WifiSignal() {
     int signal = WiFi.RSSI();
     char message[64];
     sprintf(message, "Wifi signal: %d dB", signal);
     write_output(message);
+    return signal;
+}
+
+void send_signal(){
+//  /json.htm?type=command&param=udevice&idx=IDX&nvalue=0&svalue=VALUE
+   String URL = DZ_API + String("type=command&param=udevice&idx=")
+                       + String(dz_signal_idx)
+                       + String("&nvalue=0&svalue=")
+                       + String(get_WifiSignal());
+  WiFiClient client;
+  http.begin(client, URL);
+  // write_output(URL);
+  String auth = base64::encode(String(DZ_USER) + ":" + String(DZ_PASS));
+  // write_output(auth);
+  http.addHeader("Authorization", "Basic " + auth);
+
+  int httpCode = http.GET();
+  String payload;
+  //Check the returning code
+  if (httpCode != 200) {
+    write_output("HTTP call in send_signal error");
+    write_output(String(httpCode));
+  }
+  // else{
+  //   payload = http.getString();
+  //   write_output(payload);
+  // }
 }
 
 void get_HardwareIdx(){
@@ -206,6 +240,7 @@ void get_DevicesIdx(){
   filter["result"][0]["SubType"] = true;
   filter["result"][0]["SwitchType"] = true;
   filter["result"][0]["Name"] = true;
+  filter["result"][0]["Data"] = true;
   filter["result"][0]["idx"] = true;
 
   // serializeJson(filter, Serial);
@@ -225,13 +260,13 @@ void get_DevicesIdx(){
   // extract the values
   // Serial.println(F("JsonArry:"));
 
-  // Retreive hardware
-  // JsonArray array = dzDevice["result"].as<JsonArray>();
-  // for(JsonVariant v : array) {
-  //   if(String(HOSTNAME).equals(v["Name"].as<char*>())){
-  //     WeMos_dz_Hw_idx = v["idx"].as<int>();
-  //   }
-  // }
+  // Retreive devices
+  JsonArray array = dzDevice["result"].as<JsonArray>();
+  for(JsonVariant v : array) {
+    if(String(dz_signal_name).equals(v["Name"].as<char*>())){
+      dz_signal_idx = v["idx"].as<int>();
+    }
+  }
 }
 
 void get_domoticzIdx(){
