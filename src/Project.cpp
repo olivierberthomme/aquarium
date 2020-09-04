@@ -8,6 +8,7 @@
 #include <base64.h>
 #include <ArduinoJson.h>
 #include <secrets.h>
+#include <Sensors.h>
 
 #define HOSTNAME "RobotPotager"
 // Scheduler variables
@@ -23,7 +24,8 @@ int WeMos_dz_Plan_idx = 0;
 
 const char* dz_signal_name = "Reseau";
 int dz_signal_idx = 0;
-// int dz_signal_val = 0;
+const char* dz_temp_name = "Temperature";
+int dz_temp_idx = 0;
 
 // Syslog server connection info
 #define SYSLOG_SERVER "192.168.1.100"
@@ -33,6 +35,7 @@ int dz_signal_idx = 0;
 void print_WifiSignal();
 void get_domoticzIdx();
 void send_signal();
+void send_temperature();
 
 // Timer/Scheduler
 Scheduler runner;
@@ -41,6 +44,7 @@ Scheduler runner;
 // Task t1(2*60*1000, TASK_FOREVER, &print_WifiSignal, &runner, true);    //adding task to the chain on creation
 Task update_dz_idx(4*60*60*1000, TASK_FOREVER, &get_domoticzIdx, &runner, true);  //Get Idx every 4 hours
 Task update_dz_signal(15*60*1000, TASK_FOREVER, &send_signal, &runner, true);  //Update Wifi signal every 15mn
+Task update_dz_temp(15*60*1000, TASK_FOREVER, &send_temperature, &runner, true);  //Update temperature every 15mn
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -60,6 +64,29 @@ int get_WifiSignal() {
     sprintf(message, "Wifi signal: %d dB", signal);
     write_output(message);
     return signal;
+}
+
+void send_temperature(){
+  // /json.htm?type=command&param=udevice&idx=IDX&nvalue=0&svalue=TEMP
+  write_output(String("temp: ")+String(get_temperature()));
+   String URL = DZ_API + String("type=command&param=udevice&idx=")
+                       + String(dz_temp_idx)
+                       + String("&nvalue=0&svalue=")
+                       + String(get_temperature());
+  WiFiClient client;
+  http.begin(client, URL);
+  // write_output(URL);
+  String auth = base64::encode(String(DZ_USER) + ":" + String(DZ_PASS));
+  // write_output(auth);
+  http.addHeader("Authorization", "Basic " + auth);
+
+  int httpCode = http.GET();
+  String payload;
+  //Check the returning code
+  if (httpCode != 200) {
+    write_output("HTTP call in send_temperature error");
+    write_output(String(httpCode));
+  }
 }
 
 void send_signal(){
@@ -82,10 +109,6 @@ void send_signal(){
     write_output("HTTP call in send_signal error");
     write_output(String(httpCode));
   }
-  // else{
-  //   payload = http.getString();
-  //   write_output(payload);
-  // }
 }
 
 void get_HardwareIdx(){
@@ -266,6 +289,9 @@ void get_DevicesIdx(){
     if(String(dz_signal_name).equals(v["Name"].as<char*>())){
       dz_signal_idx = v["idx"].as<int>();
     }
+    if(String(dz_temp_name).equals(v["Name"].as<char*>())){
+      dz_temp_idx = v["idx"].as<int>();
+    }    
   }
 }
 
