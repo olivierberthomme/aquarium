@@ -36,6 +36,7 @@ void print_WifiSignal();
 void get_domoticzIdx();
 void send_signal();
 void send_temperature();
+void send_flow();
 
 // Timer/Scheduler
 Scheduler runner;
@@ -45,6 +46,7 @@ Scheduler runner;
 Task update_dz_idx(4*60*60*1000, TASK_FOREVER, &get_domoticzIdx, &runner, true);  //Get Idx every 4 hours
 Task update_dz_signal(15*60*1000, TASK_FOREVER, &send_signal, &runner, true);  //Update Wifi signal every 15mn
 Task update_dz_temp(15*60*1000, TASK_FOREVER, &send_temperature, &runner, true);  //Update temperature every 15mn
+Task update_flow(1000, TASK_FOREVER, &send_flow, &runner, true);  //Update temperature every 15mn
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -57,6 +59,7 @@ void write_output(String message){
   syslog.log(LOG_INFO, message);
   Serial.println(message);
 }
+
 
 int get_WifiSignal() {
     int signal = WiFi.RSSI();
@@ -87,6 +90,10 @@ void send_temperature(){
     write_output("HTTP call in send_temperature error");
     write_output(String(httpCode));
   }
+}
+
+void send_flow(){
+  write_output(String("flow: ")+String(get_flowCounter()));
 }
 
 void send_signal(){
@@ -379,7 +386,9 @@ void setup() {
   // Region Timer
   runner.startNow();  // set point-in-time for scheduling start
   // Region Timer end
-
+  
+  setupSensors();
+  
   // Region syslog
   syslog.log(LOG_INFO, "End setup function");
   // Region syslog end
