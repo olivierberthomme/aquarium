@@ -3,4 +3,5 @@
 void setupSensors();
 float get_temperature();
 void onFlowCounterChange();
-int get_flowCounter();
+float get_flowCounter();
+float get_rainCounter();

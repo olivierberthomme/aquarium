@@ -19,13 +19,24 @@ uint16_t samples[NUMSAMPLES];
 
 // Region -- Flow counter
 #define FLOWCOUNTPIN D5 // Must allow interrupt
-#define DEBOUNCEDELAY 10
+#define FLOWDEBOUNCEDELAY 20
 // Flow counter
-volatile int state;
+volatile int Flowstate;
 volatile int FlowCounterValue = 0;
 // Holds the last time debounce was evaluated (in millis).
-volatile long lastDebounceTime = 0;
+volatile long FlowLastDebounceTime = 0;
 // Region end -- Flow counter
+
+// Region -- Rain counter
+#define RAINCOUNTPIN D6 // Must allow interrupt
+#define RAINDEBOUNCEDELAY 1000
+// Flow counter
+volatile int RainState;
+volatile int RainCounterValue = 0;
+// Holds the last time debounce was evaluated (in millis).
+volatile long RainLastDebounceTime = 0;
+// Region end -- Rain counter
+
 float get_temperature() {
   uint8_t i;
   float average;
@@ -65,23 +76,50 @@ ICACHE_RAM_ATTR void onFlowCounterChange() {
   int reading = digitalRead(FLOWCOUNTPIN);
 
   // Ignore dupe readings.
-  if(reading == state) return;
+  if(reading == Flowstate) return;
   
   // Check to see if the change is within a debounce delay threshold.
-  if((millis() - lastDebounceTime) <= DEBOUNCEDELAY) {
+  if((millis() - FlowLastDebounceTime) <= FLOWDEBOUNCEDELAY) {
     return;
   }
 
-  // This update to the last debounce check is necessary regardless of debounce state.
-  lastDebounceTime = millis();
+  // This update to the last debounce check is necessary regardless of debounce Flowstate.
+  FlowLastDebounceTime = millis();
 
-  // All is good, persist the reading as the state.
-  state = reading;
+  // All is good, persist the reading as the Flowstate.
+  Flowstate = reading;
   FlowCounterValue++;
 }
 
+// Gets called by the interrupt.
+ICACHE_RAM_ATTR void onRainCounterChange() {
+  // Get the pin reading.
+  int reading = digitalRead(RAINCOUNTPIN);
+
+  // Ignore dupe readings.
+  if(reading == RainState) return;
+  
+  // Check to see if the change is within a debounce delay threshold.
+  if((millis() - RainLastDebounceTime) <= RAINDEBOUNCEDELAY) {
+    return;
+  }
+
+  // This update to the last debounce check is necessary regardless of debounce RainState.
+  RainLastDebounceTime = millis();
+
+  // All is good, persist the reading as the RainState.
+  RainState = reading;
+  RainCounterValue++;
+}
+
 int get_flowCounter(){
-  return FlowCounterValue;
+  return (float)FlowCounterValue;
+}
+
+float get_rainCounter(){
+  // float rain_mm = RainCounterValue * (float)0.3537;
+
+  return (float)RainCounterValue * (float)0.3537;
 }
 
 void setupSensors(){
@@ -89,4 +127,7 @@ void setupSensors(){
 
   pinMode(FLOWCOUNTPIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(FLOWCOUNTPIN), onFlowCounterChange, CHANGE);
+  
+  pinMode(RAINCOUNTPIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(RAINCOUNTPIN), onRainCounterChange, CHANGE);
 }

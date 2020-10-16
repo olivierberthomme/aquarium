@@ -37,6 +37,7 @@ void get_domoticzIdx();
 void send_signal();
 void send_temperature();
 void send_flow();
+void send_rain();
 
 // Timer/Scheduler
 Scheduler runner;
@@ -46,7 +47,8 @@ Scheduler runner;
 Task update_dz_idx(4*60*60*1000, TASK_FOREVER, &get_domoticzIdx, &runner, true);  //Get Idx every 4 hours
 Task update_dz_signal(15*60*1000, TASK_FOREVER, &send_signal, &runner, true);  //Update Wifi signal every 15mn
 Task update_dz_temp(15*60*1000, TASK_FOREVER, &send_temperature, &runner, true);  //Update temperature every 15mn
-Task update_flow(1000, TASK_FOREVER, &send_flow, &runner, true);  //Update temperature every 15mn
+Task update_flow(1000, TASK_FOREVER, &send_flow, &runner, true);  //Update flow value
+Task update_rain(1000, TASK_FOREVER, &send_rain, &runner, true);  //Update rain value
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -94,6 +96,10 @@ void send_temperature(){
 
 void send_flow(){
   write_output(String("flow: ")+String(get_flowCounter()));
+}
+
+void send_rain(){
+  write_output(String("rain: ")+String(get_rainCounter())+String("mm"));
 }
 
 void send_signal(){
