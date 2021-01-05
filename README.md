@@ -1,4 +1,4 @@
-# RobotPotager
+# Aquarium
 ESP8266 linked to Domoticz.
 
 # Sensors: 
