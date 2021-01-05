@@ -18,20 +18,6 @@ Specifications:
 - Lead length: 1m
 - Adapter output connector: standard electronic brick interface, 2.54mm-3P header
 
-## Rain meter: MISOL Rain Bucket Sensor
-https://www.aliexpress.com/item/1000001838878.html
-This Rain Buacket Gauge is designed to work with the MISOL Weather Station Pro. The tip of the tipping bucket can hold up to 0.3537 mm per tip.
-
-## Soil moisture
-https://www.aliexpress.com/item/32959352428.html
-
-Specifications: 
-- Working Voltage: DC 3.3-12V
-- Working Current: <20ma
-- Output Current: <30ma
-- I/O: + - DO AO
-- Dimension: 36x15x7mm 
-
 # Domoticz integration
 At startup, will query Domoticz API **by plan** and browse devices where plan matching ESP8266 hostname.
 In get_DevicesIdx function, save devices indexes.

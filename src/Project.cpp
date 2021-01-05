@@ -10,7 +10,7 @@
 #include <secrets.h>
 #include <Sensors.h>
 
-#define HOSTNAME "RobotPotager"
+#define HOSTNAME "Aquarium"
 // Scheduler variables
 #define _TASK_SLEEP_ON_IDLE_RUN
 
@@ -19,36 +19,31 @@ const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASS;
 
 // Domoticz variables
-int WeMos_dz_Hw_idx = 0;
 int WeMos_dz_Plan_idx = 0;
 
 const char* dz_signal_name = "Reseau";
 int dz_signal_idx = 0;
-const char* dz_temp_name = "Temperature";
+const char* dz_temp_name = "Aquarium temp";
 int dz_temp_idx = 0;
 
 // Syslog server connection info
 #define SYSLOG_SERVER "192.168.1.100"
-#define SYSLOG_PORT 10500
+#define SYSLOG_PORT 10510
 
 // Prototype
 void print_WifiSignal();
+void write_output(String message);
 void get_domoticzIdx();
 void send_signal();
 void send_temperature();
-void send_flow();
-void send_rain();
 
 // Timer/Scheduler
 Scheduler runner;
 
 // List tasks
-// Task t1(2*60*1000, TASK_FOREVER, &print_WifiSignal, &runner, true);    //adding task to the chain on creation
-Task update_dz_idx(4*60*60*1000, TASK_FOREVER, &get_domoticzIdx, &runner, true);  //Get Idx every 4 hours
-Task update_dz_signal(15*60*1000, TASK_FOREVER, &send_signal, &runner, true);  //Update Wifi signal every 15mn
-Task update_dz_temp(15*60*1000, TASK_FOREVER, &send_temperature, &runner, true);  //Update temperature every 15mn
-Task update_flow(1000, TASK_FOREVER, &send_flow, &runner, true);  //Update flow value
-Task update_rain(1000, TASK_FOREVER, &send_rain, &runner, true);  //Update rain value
+Task update_dz_idx(4 * TASK_HOUR, TASK_FOREVER, &get_domoticzIdx, &runner, true);  //Get Idx every 4 hours
+Task update_dz_signal(2 * TASK_MINUTE, TASK_FOREVER, &send_signal, &runner, true);  //Update Wifi signal
+Task update_dz_temp(2 * TASK_MINUTE, TASK_FOREVER, &send_temperature, &runner, true);  //Update temperature
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -61,7 +56,6 @@ void write_output(String message){
   syslog.log(LOG_INFO, message);
   Serial.println(message);
 }
-
 
 int get_WifiSignal() {
     int signal = WiFi.RSSI();
@@ -94,13 +88,6 @@ void send_temperature(){
   }
 }
 
-void send_flow(){
-  write_output(String("flow: ")+String(get_flowCounter()));
-}
-
-void send_rain(){
-  write_output(String("rain: ")+String(get_rainCounter())+String("mm"));
-}
 
 void send_signal(){
 //  /json.htm?type=command&param=udevice&idx=IDX&nvalue=0&svalue=VALUE
@@ -124,63 +111,6 @@ void send_signal(){
   }
 }
 
-void get_HardwareIdx(){
-  // JSON document
-  // Allocate the JSON document
-  // Use arduinojson.org/v6/assistant to compute the capacity.
-  const size_t capacity = 5144;
-  DynamicJsonDocument dzHardware(capacity);
-
-  String URL = DZ_API + String("type=hardware");
-  WiFiClient client;
-  http.begin(client, URL);
-  // write_output(URL);
-  String auth = base64::encode(String(DZ_USER) + ":" + String(DZ_PASS));
-  // write_output(auth);
-  http.addHeader("Authorization", "Basic " + auth);
-
-  int httpCode = http.GET();
-  String payload;
-  //Check the returning code
-  if (httpCode != 200) {
-    write_output("HTTP call in get_domoticzIdx error");
-    write_output(String(httpCode));
-  }else{
-    payload = http.getString();
-    // write_output(payload);
-  }
-  http.end();   //Close connection
-
-  // Parse JSON object
-  // Only keep few fields
-  StaticJsonDocument<200> filter;
-  filter["result"][0]["Name"] = true;
-  filter["result"][0]["idx"] = true;
-  filter["result"][0]["Enabled"] = true;
-
-  DeserializationError error = deserializeJson(dzHardware, payload, DeserializationOption::Filter(filter));
-
-  if (error) {
-    write_output(F("deserializeJson() failed: "));
-    write_output(error.c_str());
-    return;
-  }
-
-  // Extract values
-  // Serial.println(F("Response:"));
-  // serializeJson(dzHardware["result"], Serial);
-  // extract the values
-  // Serial.println(F("JsonArry:"));
-
-  // Retreive hardware
-  JsonArray array = dzHardware["result"].as<JsonArray>();
-  for(JsonVariant v : array) {
-    if(String(HOSTNAME).equals(v["Name"].as<char*>())){
-      WeMos_dz_Hw_idx = v["idx"].as<int>();
-    }
-  }
-}
-
 void get_PlanIdx(){
   // JSON document
   // Allocate the JSON document
@@ -193,7 +123,6 @@ void get_PlanIdx(){
   http.begin(client, URL);
   // write_output(URL);
   String auth = base64::encode(String(DZ_USER) + ":" + String(DZ_PASS));
-  // write_output(auth);
   http.addHeader("Authorization", "Basic " + auth);
 
   int httpCode = http.GET();
@@ -309,11 +238,6 @@ void get_DevicesIdx(){
 }
 
 void get_domoticzIdx(){
-  // Get hardware IDX from Domoticz
-  get_HardwareIdx();
-  // write_output(F("WeMos_dz_Hw_idx:"));
-  // write_output(String(WeMos_dz_Hw_idx));
-
   // Get plan IDX from Domoticz
   get_PlanIdx();
   // write_output(F("WeMos_dz_Plan_idx:"));
@@ -344,8 +268,6 @@ void setup() {
 
   // Port defaults to 8266
   ArduinoOTA.setPort(8266);
-
-  // Hostname defaults to esp8266-[ChipID]
   ArduinoOTA.setHostname(HOSTNAME);
 
   // No authentication by default
@@ -405,4 +327,7 @@ void loop() {
   ArduinoOTA.handle();
   // Timer
   runner.execute();
+
+  // time of the ESP
+  yield();
 }

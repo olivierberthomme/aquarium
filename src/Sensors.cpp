@@ -30,6 +30,7 @@ volatile long FlowLastDebounceTime = 0;
 // Region -- Rain counter
 #define RAINCOUNTPIN D6 // Must allow interrupt
 #define RAINDEBOUNCEDELAY 1000
+#define RAINBUCKETVOLUME (float)0.3537
 // Flow counter
 volatile int RainState;
 volatile int RainCounterValue = 0;
@@ -58,16 +59,21 @@ float get_temperature() {
   average = 1023 / average - 1;
   average = SERIESRESISTOR / average;
 
- //resistence to temperature
+  //resistence to temperature
   float temperature;
   temperature = average / THERMISTORNOMINAL; 
   temperature = log(temperature);   
   temperature /= BCOEFFICIENT;                  
   temperature += 1.0 / (TEMPERATURENOMINAL + 273.15); 
   temperature = 1.0 / temperature;                 
-  temperature -= 273.15;                         // convert to C
+  temperature -= 273.15; // convert to C
+
+  // Better calibration
+  //  y = 0.36436868 x² - 11.8643054 x + 115.708899
+  float calibr;
+  calibr = 0.36436868 * pow(temperature, 2.0) - 11.8643054 * temperature + 115.708899;
  
-  return temperature;
+  return calibr;
 }
 
 // Gets called by the interrupt.
@@ -119,7 +125,7 @@ int get_flowCounter(){
 float get_rainCounter(){
   // float rain_mm = RainCounterValue * (float)0.3537;
 
-  return (float)RainCounterValue * (float)0.3537;
+  return (float)RainCounterValue * RAINBUCKETVOLUME;
 }
 
 void setupSensors(){
